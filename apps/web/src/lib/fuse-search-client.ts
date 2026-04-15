@@ -1,4 +1,5 @@
 import type { SemanticSearchResult } from "@openbeam/streams"
+import { isLocalTranslationId, searchLocalVerses } from "./local-translations"
 
 interface SearchResponse {
   type: "search-result"
@@ -60,11 +61,31 @@ function getWorker(): Worker {
   return worker
 }
 
+async function searchLocalAsSemantic(
+  query: string,
+  translationId: number,
+  limit: number,
+): Promise<SemanticSearchResult[]> {
+  const verses = await searchLocalVerses(query, translationId, limit)
+  return verses.slice(0, limit).map((v, idx) => ({
+    verse_ref: `${v.book_name} ${v.chapter}:${v.verse}`,
+    verse_text: v.text,
+    book_name: v.book_name,
+    book_number: v.book_number,
+    chapter: v.chapter,
+    verse: v.verse,
+    similarity: Math.max(0.5, 0.72 - idx * 0.015),
+  }))
+}
+
 export function searchContextWithFuse(
   query: string,
   translationId: number,
   limit = 15,
 ): Promise<SemanticSearchResult[]> {
+  if (isLocalTranslationId(translationId)) {
+    return searchLocalAsSemantic(query, translationId, limit)
+  }
   return new Promise((resolve, reject) => {
     const id = ++requestId
     pending.set(id, { resolve, reject })
@@ -80,6 +101,7 @@ export function searchContextWithFuse(
 }
 
 export function prefetchFuseIndex(translationId: number): void {
+  if (isLocalTranslationId(translationId)) return
   const id = ++requestId
   // Fire-and-forget — we don't need to wait for the result
   pending.set(id, { resolve: () => pending.delete(id), reject: () => pending.delete(id) })

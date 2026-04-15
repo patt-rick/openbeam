@@ -1,16 +1,30 @@
 import { useBibleStore } from "@/stores"
 import { api } from "@/services"
 import type { Verse } from "@/types"
+import {
+  isLocalTranslationId,
+  listLocalTranslations,
+  getLocalBooks,
+  getLocalChapter,
+  getLocalVerse,
+  searchLocalVerses,
+} from "@/lib/local-translations"
 
 async function loadTranslations() {
-  const translations = await api.listTranslations()
+  const [server, local] = await Promise.all([
+    api.listTranslations().catch(() => []),
+    listLocalTranslations().catch(() => []),
+  ])
+  const translations = [...server, ...local]
   useBibleStore.getState().setTranslations(translations)
   return translations
 }
 
 async function loadBooks(translationId?: number) {
   const tid = translationId ?? useBibleStore.getState().activeTranslationId
-  const books = await api.listBooks(tid)
+  const books = isLocalTranslationId(tid)
+    ? await getLocalBooks(tid)
+    : await api.listBooks(tid)
   useBibleStore.getState().setBooks(books)
   return books
 }
@@ -21,7 +35,9 @@ async function loadChapter(
   translationId?: number,
 ) {
   const tid = translationId ?? useBibleStore.getState().activeTranslationId
-  const verses = await api.getChapter(tid, bookNumber, chapter)
+  const verses = isLocalTranslationId(tid)
+    ? await getLocalChapter(tid, bookNumber, chapter)
+    : await api.getChapter(tid, bookNumber, chapter)
   useBibleStore.getState().setCurrentChapter(verses)
   return verses
 }
@@ -33,7 +49,9 @@ async function fetchVerse(
   translationId?: number,
 ): Promise<Verse | null> {
   const tid = translationId ?? useBibleStore.getState().activeTranslationId
-  return api.getVerse(tid, bookNumber, chapter, verse)
+  return isLocalTranslationId(tid)
+    ? getLocalVerse(tid, bookNumber, chapter, verse)
+    : api.getVerse(tid, bookNumber, chapter, verse)
 }
 
 async function searchVerses(
@@ -42,7 +60,9 @@ async function searchVerses(
   translationId?: number,
 ) {
   const tid = translationId ?? useBibleStore.getState().activeTranslationId
-  const results = await api.searchVerses(query, tid, limit)
+  const results = isLocalTranslationId(tid)
+    ? await searchLocalVerses(query, tid, limit)
+    : await api.searchVerses(query, tid, limit)
   useBibleStore.getState().setSearchResults(results)
   return results
 }

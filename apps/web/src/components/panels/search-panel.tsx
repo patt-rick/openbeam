@@ -31,6 +31,7 @@ import type { Book, Verse } from "@/types"
 import { Input } from "@/components/ui/input"
 import { searchContextWithFuse, prefetchFuseIndex } from "@/lib/context-search"
 import { api } from "@/services"
+import { isLocalTranslationId, searchLocalVerses } from "@/lib/local-translations"
 
 type SearchTab = "book" | "context"
 
@@ -160,11 +161,13 @@ export function SearchPanel() {
 
   const selectedBookNumber = selectedBook?.book_number
 
-  // Load initial data
   useEffect(() => {
     bibleActions.loadTranslations().catch(console.error)
-    bibleActions.loadBooks().catch(console.error)
   }, [])
+
+  useEffect(() => {
+    bibleActions.loadBooks(activeTranslationId).catch(console.error)
+  }, [activeTranslationId])
 
   // Load chapter when book + chapter are set
   useEffect(() => {
@@ -312,18 +315,20 @@ export function SearchPanel() {
       query$: contextQuery$,
       translationId$,
       fuseSearch: searchContextWithFuse,
-      ftsSearch: (q, tid, limit) =>
-        api.searchVerses(q, tid, limit).then((verses) =>
-          verses.slice(0, 15).map((v, idx): SemanticSearchResult => ({
-            verse_ref: `${v.book_name} ${v.chapter}:${v.verse}`,
-            verse_text: v.text,
-            book_name: v.book_name,
-            book_number: v.book_number,
-            chapter: v.chapter,
-            verse: v.verse,
-            similarity: Math.max(0.5, 0.72 - idx * 0.015),
-          })),
-        ),
+      ftsSearch: async (q, tid, limit) => {
+        const verses = isLocalTranslationId(tid)
+          ? await searchLocalVerses(q, tid, limit)
+          : await api.searchVerses(q, tid, limit)
+        return verses.slice(0, 15).map((v, idx): SemanticSearchResult => ({
+          verse_ref: `${v.book_name} ${v.chapter}:${v.verse}`,
+          verse_text: v.text,
+          book_name: v.book_name,
+          book_number: v.book_number,
+          chapter: v.chapter,
+          verse: v.verse,
+          similarity: Math.max(0.5, 0.72 - idx * 0.015),
+        }))
+      },
     })
     const sub = stream.results$.subscribe((results) => {
       useBibleStore.getState().setSemanticResults(results)
@@ -378,8 +383,6 @@ export function SearchPanel() {
     if (e.key === "Enter") {
       e.preventDefault()
       focusAfterNavRef.current = true
-      // Sync input to the resolved reference so user can edit in-place
-      // e.g. "Songs of Solomon 4:4" — backspace twice, type "8" → chapter 8
       const result = getAutocompleteSuggestion(quickInput, books)
       if (result.matchedBook && result.chapter) {
         const ref = result.verse

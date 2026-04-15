@@ -41,11 +41,18 @@ import {
   GraduationCapIcon,
   BrainCircuitIcon,
 } from "lucide-react"
-import { useSettingsStore } from "@/stores"
+import { useSettingsStore, useBibleStore } from "@/stores"
 import { useTutorialStore } from "@/stores/tutorial-store"
 import { api } from "@/services"
 import { useSettingsDialogStore } from "@/lib/settings-dialog"
 import type { DeviceInfo } from "@/types/audio"
+import { bibleActions } from "@/hooks/use-bible"
+import {
+  isLocalTranslationId,
+  addLocalTranslation,
+  deleteLocalTranslation,
+  validateTranslationFile,
+} from "@/lib/local-translations"
 
 type NavSection = "audio" | "speech" | "bible" | "display" | "api-keys" | "remote" | "help"
 
@@ -108,7 +115,7 @@ function AudioSection() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__default__">System default</SelectItem>
-            {devices.map((device) => (
+            {devices.filter((device) => device.id).map((device) => (
               <SelectItem key={device.id} value={device.id}>
                 {device.name}{device.is_default ? " (default)" : ""}
               </SelectItem>
@@ -256,25 +263,111 @@ interface TranslationInfo {
 
 function BibleSection() {
   const [translations, setTranslations] = useState<TranslationInfo[]>([])
+  const [localIds, setLocalIds] = useState<Set<number>>(new Set())
   const [activeId, setActiveId] = useState<number>(1)
   const [loading, setLoading] = useState(true)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadBusy, setUploadBusy] = useState(false)
+  const [parseReport, setParseReport] = useState<string | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const [uploadFormat, setUploadFormat] = useState<"json" | "ocr" | "xml">("json")
+  const [meta, setMeta] = useState({ abbreviation: "", title: "", language: "en" })
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    api.listTranslations()
-      .then((list) => setTranslations(list))
-      .catch((e) => console.error("[settings] Failed to load translations:", e))
-      .finally(() => setLoading(false))
+  const refresh = useCallback(async () => {
+    const list = await bibleActions.loadTranslations()
+    setTranslations(list)
+    setLocalIds(new Set(list.filter((t) => isLocalTranslationId(t.id)).map((t) => t.id)))
+    setActiveId(useBibleStore.getState().activeTranslationId)
   }, [])
 
-  const handleChange = async (value: string) => {
+  useEffect(() => {
+    refresh()
+      .catch((e) => console.error("[settings] Failed to load translations:", e))
+      .finally(() => setLoading(false))
+  }, [refresh])
+
+  const handleChange = (value: string) => {
     const id = parseInt(value)
     setActiveId(id)
-    const { useBibleStore } = await import("@/stores")
     useBibleStore.getState().setActiveTranslation(id)
   }
 
-  const englishTranslations = translations.filter((t) => t.language === "en")
-  const otherTranslations = translations.filter((t) => t.language !== "en")
+  const openPicker = () => {
+    setUploadError(null)
+    setParseReport(null)
+    if (uploadFormat === "ocr" && (!meta.abbreviation.trim() || !meta.title.trim())) {
+      setUploadError("Abbreviation and title are required for OCR import.")
+      return
+    }
+    fileInputRef.current?.click()
+  }
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadError(null)
+    setParseReport(null)
+    setUploadBusy(true)
+    try {
+      const text = await file.text()
+      if (uploadFormat === "json") {
+        const parsed = validateTranslationFile(JSON.parse(text))
+        await addLocalTranslation(parsed)
+        setParseReport(`Imported ${parsed.abbreviation} — ${parsed.title}.`)
+      } else if (uploadFormat === "ocr") {
+        const { parseOcrBibleText } = await import("@/lib/ocr-parser")
+        const { file: parsed, report } = parseOcrBibleText(text, {
+          abbreviation: meta.abbreviation.trim(),
+          title: meta.title.trim(),
+          language: meta.language.trim() || "en",
+        })
+        await addLocalTranslation(parsed)
+        setParseReport(
+          `Imported ${report.books} books, ${report.chapters} chapters, ${report.verses} verses.` +
+            (report.warnings.length ? ` ${report.warnings.length} warnings (see console).` : ""),
+        )
+        if (report.warnings.length) console.warn("[ocr-import]", report.warnings)
+      } else {
+        const { parseBibleXml } = await import("@/lib/xml-parser")
+        const { file: parsed, report } = parseBibleXml(text, {
+          abbreviation: meta.abbreviation.trim(),
+          title: meta.title.trim(),
+          language: meta.language.trim(),
+        })
+        await addLocalTranslation(parsed)
+        setParseReport(
+          `Imported ${parsed.abbreviation} — ${parsed.title} (${report.format.toUpperCase()}): ${report.books} books, ${report.chapters} chapters, ${report.verses} verses.`,
+        )
+      }
+      await refresh()
+      setAddOpen(false)
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setUploadBusy(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  const acceptFor = uploadFormat === "json"
+    ? "application/json,.json"
+    : uploadFormat === "ocr"
+    ? "text/plain,.txt"
+    : "application/xml,text/xml,.xml"
+  const needsMeta = uploadFormat === "ocr"
+
+  const handleDelete = async (id: number) => {
+    await deleteLocalTranslation(id)
+    if (useBibleStore.getState().activeTranslationId === id) {
+      useBibleStore.getState().setActiveTranslation(1)
+    }
+    await refresh()
+  }
+
+  const englishTranslations = translations.filter((t) => t.language === "en" && !localIds.has(t.id))
+  const otherTranslations = translations.filter((t) => t.language !== "en" && !localIds.has(t.id))
+  const customTranslations = translations.filter((t) => localIds.has(t.id))
 
   return (
     <div className="flex flex-col gap-6">
@@ -301,12 +394,146 @@ function BibleSection() {
                 ))}
               </>
             )}
+            {customTranslations.length > 0 && (
+              <>
+                <div className="mt-1 px-2 py-1 text-[0.5625rem] font-medium uppercase tracking-wider text-muted-foreground">Custom (Offline)</div>
+                {customTranslations.map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>{t.abbreviation} — {t.title}</SelectItem>
+                ))}
+              </>
+            )}
           </SelectContent>
         </Select>
         <p className="text-[0.625rem] text-muted-foreground">
           Detected verses will display in this translation.
           {translations.length > 0 && ` ${translations.length} translations available.`}
         </p>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t pt-4">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Custom Translations</label>
+          {!addOpen && (
+            <Button size="sm" variant="outline" onClick={() => { setAddOpen(true); setUploadError(null); setParseReport(null) }}>
+              + Add translation
+            </Button>
+          )}
+        </div>
+        <p className="text-[0.625rem] text-muted-foreground">
+          Stored locally in your browser. Reading and word-search work offline; server-side detection is unaffected.
+        </p>
+
+        {addOpen && (
+          <div className="flex flex-col gap-3 rounded border p-3">
+            <div className="flex flex-col gap-2">
+              <span className="text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground">
+                1. Choose file type
+              </span>
+              <RadioGroup
+                value={uploadFormat}
+                onValueChange={(v) => setUploadFormat(v as "json" | "ocr" | "xml")}
+                className="flex flex-col gap-1"
+              >
+                <label className="flex items-start gap-2 text-xs">
+                  <RadioGroupItem value="json" className="mt-0.5" />
+                  <span>
+                    <span className="font-medium">JSON</span>
+                    <span className="block text-[0.625rem] text-muted-foreground">
+                      OpenBeam's own schema (book_number / chapters / verses).
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-xs">
+                  <RadioGroupItem value="xml" className="mt-0.5" />
+                  <span>
+                    <span className="font-medium">XML (Zefania or OSIS)</span>
+                    <span className="block text-[0.625rem] text-muted-foreground">
+                      Auto-detected. Zefania: &lt;XMLBIBLE&gt;. OSIS: &lt;osis&gt; with &lt;verse osisID&gt;.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-xs">
+                  <RadioGroupItem value="ocr" className="mt-0.5" />
+                  <span>
+                    <span className="font-medium">OCR plain text (.txt)</span>
+                    <span className="block text-[0.625rem] text-muted-foreground">
+                      Book names on their own line, verses starting with a number (e.g. "1 In the beginning"). Handles "1:1" and "Chapter 1" forms.
+                    </span>
+                  </span>
+                </label>
+              </RadioGroup>
+            </div>
+
+            {needsMeta && (
+              <div className="flex flex-col gap-2">
+                <span className="text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground">
+                  2. Translation info
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  <Input
+                    placeholder="Abbrev (e.g. MYT)"
+                    value={meta.abbreviation}
+                    onChange={(e) => setMeta((m) => ({ ...m, abbreviation: e.target.value }))}
+                    className="h-7 text-xs"
+                  />
+                  <Input
+                    placeholder="Title"
+                    value={meta.title}
+                    onChange={(e) => setMeta((m) => ({ ...m, title: e.target.value }))}
+                    className="h-7 text-xs"
+                  />
+                  <Input
+                    placeholder="Language (en)"
+                    value={meta.language}
+                    onChange={(e) => setMeta((m) => ({ ...m, language: e.target.value }))}
+                    className="h-7 text-xs"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <span className="text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground">
+                {needsMeta ? "3. Pick file" : "2. Pick file"}
+              </span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={acceptFor}
+                onChange={handleFile}
+                disabled={uploadBusy}
+                className="hidden"
+              />
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={openPicker} disabled={uploadBusy}>
+                  {uploadBusy ? "Importing…" : "Choose file & import"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setAddOpen(false)} disabled={uploadBusy}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+
+            {uploadError && (
+              <span className="text-[0.625rem] text-red-500">{uploadError}</span>
+            )}
+          </div>
+        )}
+
+        {parseReport && !addOpen && (
+          <span className="text-[0.625rem] text-green-600">{parseReport}</span>
+        )}
+
+        {customTranslations.length > 0 && (
+          <ul className="mt-1 flex flex-col gap-1">
+            {customTranslations.map((t) => (
+              <li key={t.id} className="flex items-center justify-between rounded border px-2 py-1 text-xs">
+                <span>{t.abbreviation} — {t.title} <span className="text-muted-foreground">({t.language})</span></span>
+                <Button size="sm" variant="ghost" onClick={() => handleDelete(t.id)}>Delete</Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )
