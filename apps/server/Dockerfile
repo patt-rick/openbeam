@@ -1,5 +1,5 @@
 # ---- build stage ----
-FROM rust:1.85-slim AS builder
+FROM rust:slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev libsqlite3-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
