@@ -81,7 +81,7 @@ const BOOKS: BookDef[] = [
 function stripCommonPrefixes(s: string): string {
   return s
     .replace(/^the (book|gospel|acts|revelation|letter|epistle)s? (of|according to|to|from)(\s+the)?\s+/i, "")
-    .replace(/^the (first|second|third) (book|letter|epistle) (of|to|from)(\s+the)?\s+/i, (m, ord) => {
+    .replace(/^the (first|second|third) (book|letter|epistle) (of|to|from)(\s+the)?\s+/i, (_m, ord) => {
       const n = ord.toLowerCase() === "first" ? "1 " : ord.toLowerCase() === "second" ? "2 " : "3 "
       return n
     })
