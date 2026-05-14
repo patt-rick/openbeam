@@ -18,8 +18,6 @@ WORKDIR /app
 COPY --from=builder /app/target/release/openbeam-server /app/openbeam-server
 COPY data ./data
 ENV HOST=0.0.0.0
-ENV PORT=7860
 ENV DB_PATH=/app/data/openbeam.db
 ENV RUST_LOG=info
-EXPOSE 7860
 CMD ["/app/openbeam-server"]
