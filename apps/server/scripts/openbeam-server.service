@@ -18,6 +18,8 @@ MemoryMax=4G
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=read-only
+# SQLite needs write access (journal file) even for reads, so whitelist the data dir.
+ReadWritePaths=__SERVER_DIR__/data
 PrivateTmp=true
 
 [Install]
