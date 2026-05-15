@@ -383,6 +383,10 @@ export function SearchPanel() {
 
   const handleQuickKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if ((e.key === "Tab" || e.key === "ArrowRight" || e.key === " ") && quickSuggestion && quickSuggestion !== quickInput) {
+      // Skip space-commit when only a numeric/Roman prefix is typed (e.g. "1",
+      // "I", "II") — multiple books share these prefixes (1 Samuel vs 1 Kings),
+      // so picking one is misleading. Tab/ArrowRight still accept explicitly.
+      if (e.key === " " && /^(\d+|i{1,3})$/i.test(quickInput.trim())) return
       e.preventDefault()
       const nextInput = getTabNavigationResult(quickInput, quickSuggestion)
       setQuickInput(nextInput)
