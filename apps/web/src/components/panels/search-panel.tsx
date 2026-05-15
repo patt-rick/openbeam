@@ -16,6 +16,8 @@ import {
   SparklesIcon,
   ArrowLeftIcon,
   ArrowRightIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
   CheckIcon,
   PlusIcon,
 } from "lucide-react"
@@ -139,7 +141,6 @@ export function SearchPanel() {
   const quickInputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const chapterLoadRef = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const focusAfterNavRef = useRef<boolean | undefined>(undefined)
 
   // Subscribe to individual slices to avoid re-rendering the entire panel on unrelated changes
   const translations = useBibleStore((s) => s.translations)
@@ -233,12 +234,8 @@ export function SearchPanel() {
             .getElementById(`verse-${target.id}`)
             ?.scrollIntoView({ behavior: "smooth", block: "center" })
         }
-        // Focus panel and sync input unless this was a mid-typing autocomplete preview
-        if (focusAfterNavRef.current !== false) {
-          setQuickInput(`${book.name} ${navChapter}:${navVerse}`)
-          panelRef.current?.focus()
-        }
-        focusAfterNavRef.current = undefined
+        setQuickInput(`${book.name} ${navChapter}:${navVerse}`)
+        panelRef.current?.focus()
       }).catch(console.error).finally(() => {
         useBibleStore.getState().setPendingNavigation(null)
       })
@@ -252,8 +249,53 @@ export function SearchPanel() {
     bibleActions.selectVerse(verse)
   }, [])
 
+  const goToNextVerse = useCallback(() => {
+    if (currentChapter.length === 0) return
+    const currentIdx = effectiveSelectedVerseId
+      ? currentChapter.findIndex((v) => v.id === effectiveSelectedVerseId)
+      : -1
+    const nextIdx = Math.min(currentIdx + 1, currentChapter.length - 1)
+    const next = currentChapter[nextIdx]
+    if (next) {
+      setSelectedVerseId(next.id)
+      bibleActions.selectVerse(next)
+      document
+        .getElementById(`verse-${next.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+  }, [currentChapter, effectiveSelectedVerseId])
+
+  const goToPrevVerse = useCallback(() => {
+    if (currentChapter.length === 0) return
+    const currentIdx = effectiveSelectedVerseId
+      ? currentChapter.findIndex((v) => v.id === effectiveSelectedVerseId)
+      : currentChapter.length
+    const prevIdx = Math.max(currentIdx - 1, 0)
+    const prev = currentChapter[prevIdx]
+    if (prev) {
+      setSelectedVerseId(prev.id)
+      bibleActions.selectVerse(prev)
+      document
+        .getElementById(`verse-${prev.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+  }, [currentChapter, effectiveSelectedVerseId])
+
+  const verseIdx = useMemo(
+    () =>
+      effectiveSelectedVerseId
+        ? currentChapter.findIndex((v) => v.id === effectiveSelectedVerseId)
+        : -1,
+    [currentChapter, effectiveSelectedVerseId]
+  )
+  const canPrevVerse = currentChapter.length > 0 && verseIdx !== 0
+  const canNextVerse =
+    currentChapter.length > 0 && verseIdx !== currentChapter.length - 1
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return
       if (e.key === "ArrowLeft") {
         e.preventDefault()
         if (chapter > 1) {
@@ -268,37 +310,13 @@ export function SearchPanel() {
         setSelectedVerseId(null)
       } else if (e.key === "ArrowDown") {
         e.preventDefault()
-        if (currentChapter.length === 0) return
-        const currentIdx = effectiveSelectedVerseId
-          ? currentChapter.findIndex((v) => v.id === effectiveSelectedVerseId)
-          : -1
-        const nextIdx = Math.min(currentIdx + 1, currentChapter.length - 1)
-        const next = currentChapter[nextIdx]
-        if (next) {
-          setSelectedVerseId(next.id)
-          bibleActions.selectVerse(next)
-          document
-            .getElementById(`verse-${next.id}`)
-            ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-        }
+        goToNextVerse()
       } else if (e.key === "ArrowUp") {
         e.preventDefault()
-        if (currentChapter.length === 0) return
-        const currentIdx = effectiveSelectedVerseId
-          ? currentChapter.findIndex((v) => v.id === effectiveSelectedVerseId)
-          : currentChapter.length
-        const prevIdx = Math.max(currentIdx - 1, 0)
-        const prev = currentChapter[prevIdx]
-        if (prev) {
-          setSelectedVerseId(prev.id)
-          bibleActions.selectVerse(prev)
-          document
-            .getElementById(`verse-${prev.id}`)
-            ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-        }
+        goToPrevVerse()
       }
     },
-    [chapter, currentChapter, effectiveSelectedVerseId]
+    [chapter, goToNextVerse, goToPrevVerse]
   )
 
   // RxJS search stream — replaces manual debounce + requestId + fallback chain
@@ -341,21 +359,12 @@ export function SearchPanel() {
     contextQuery$.next(query)
   }, [contextQuery$])
 
-  // EasyWorship-style autocomplete logic
+  // EasyWorship-style autocomplete: pre-load chapter for dropdown only.
+  // Navigation/selection is deferred to Enter or click — typing must not
+  // commit a partial reference like "John 3:1" en route to "John 3:16".
   useEffect(() => {
     const result = getAutocompleteSuggestion(quickInput, books)
 
-    if (result.matchedBook && result.chapter && result.verse) {
-      // This is a mid-typing preview — don't focus after navigation
-      focusAfterNavRef.current = false
-      useBibleStore.getState().setPendingNavigation({
-        bookNumber: result.matchedBook.book_number,
-        chapter: result.chapter,
-        verse: result.verse
-      })
-    }
-
-    // Debounce chapter loading to avoid firing on every keystroke
     if (chapterLoadRef.current) clearTimeout(chapterLoadRef.current)
 
     if ((result.stage === "chapter" || result.stage === "verse") && result.matchedBook && result.chapter) {
@@ -373,7 +382,7 @@ export function SearchPanel() {
   }, [quickInput, books, activeTranslationId])
 
   const handleQuickKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if ((e.key === "Tab" || e.key === "ArrowRight") && quickSuggestion && quickSuggestion !== quickInput) {
+    if ((e.key === "Tab" || e.key === "ArrowRight" || e.key === " ") && quickSuggestion && quickSuggestion !== quickInput) {
       e.preventDefault()
       const nextInput = getTabNavigationResult(quickInput, quickSuggestion)
       setQuickInput(nextInput)
@@ -382,14 +391,15 @@ export function SearchPanel() {
 
     if (e.key === "Enter") {
       e.preventDefault()
-      focusAfterNavRef.current = true
       const result = getAutocompleteSuggestion(quickInput, books)
       if (result.matchedBook && result.chapter) {
-        const ref = result.verse
-          ? `${result.matchedBook.name} ${result.chapter}:${result.verse}`
-          : `${result.matchedBook.name} ${result.chapter}:`
-        setQuickInput(ref)
-      } else {
+        const verse = result.verse ?? 1
+        useBibleStore.getState().setPendingNavigation({
+          bookNumber: result.matchedBook.book_number,
+          chapter: result.chapter,
+          verse,
+        })
+      } else if (!result.matchedBook) {
         setQuickInput("")
       }
       setShowQuickVerses(false)
@@ -405,7 +415,6 @@ export function SearchPanel() {
   }, [quickInput, quickSuggestion, books])
 
   const handleQuickVerseClick = useCallback((verse: Verse) => {
-    focusAfterNavRef.current = true
     useBibleStore.getState().setPendingNavigation({
       bookNumber: verse.book_number,
       chapter: verse.chapter,
@@ -564,33 +573,74 @@ export function SearchPanel() {
               <h3 className="text-sm font-semibold text-foreground">
                 {selectedBook.name} {chapter}
               </h3> : null}
-            {selectedBook ? <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => {
-                  if (chapter > 1) {
-                    setChapter((c) => c - 1)
-                    setChapterInput("")
-                    setSelectedVerseId(null)
-                  }
-                }}
-                disabled={chapter <= 1}
-              >
-                <ArrowLeftIcon className="size-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => {
-                  setChapter((c) => c + 1)
-                  setChapterInput("")
-                  setSelectedVerseId(null)
-                }}
-              >
-                <ArrowRightIcon className="size-3" />
-              </Button>
-            </div> : null}
+            {selectedBook ? (
+              <TooltipProvider>
+                <div className="flex items-center gap-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => {
+                          if (chapter > 1) {
+                            setChapter((c) => c - 1)
+                            setChapterInput("")
+                            setSelectedVerseId(null)
+                          }
+                        }}
+                        disabled={chapter <= 1}
+                      >
+                        <ArrowLeftIcon className="size-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Previous chapter</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => {
+                          setChapter((c) => c + 1)
+                          setChapterInput("")
+                          setSelectedVerseId(null)
+                        }}
+                      >
+                        <ArrowRightIcon className="size-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Next chapter</TooltipContent>
+                  </Tooltip>
+                  <span className="mx-0.5 h-4 w-px bg-border" />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={goToPrevVerse}
+                        disabled={!canPrevVerse}
+                      >
+                        <ArrowUpIcon className="size-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Previous verse</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={goToNextVerse}
+                        disabled={!canNextVerse}
+                      >
+                        <ArrowDownIcon className="size-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Next verse</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
+            ) : null}
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">

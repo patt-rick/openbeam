@@ -15,7 +15,7 @@
 
 OpenBeam is the cloud companion to [Rhema](https://github.com/openbezal/rhema), a desktop application for real-time Bible verse detection during live sermons. OpenBeam brings the same multi-strategy detection pipeline to the browser — no downloads, no installation, no setup beyond a Deepgram API key.
 
-A preacher says *"nothing can separate us from God's love"* and OpenBeam surfaces **Romans 8:38-39** in real-time, ready for your broadcast overlay.
+A preacher says _"nothing can separate us from God's love"_ and OpenBeam surfaces **Romans 8:38-39** in real-time, ready for your broadcast overlay.
 
 <p align="center">
   <img src="./openbeam-banner.png" alt="OpenBeam" width="90%" />
@@ -32,21 +32,25 @@ OpenBeam removes that barrier. Open a URL, enter your Deepgram key, and start de
 OpenBeam doesn't use a single method to find verses. It runs four strategies simultaneously and merges results with confidence weighting:
 
 ### Aho-Corasick Automaton — Direct References
-A compiled finite automaton that matches all 66 book names, their abbreviations, and spoken variants in a single pass over the transcript. When a preacher says *"turn to First Corinthians chapter 13"*, the automaton catches it instantly — no regex backtracking, no LLM round-trip.
 
-Handles fuzzy spoken formats: *"one nineteen verse one oh five"* resolves to Psalm 119:105.
+A compiled finite automaton that matches all 66 book names, their abbreviations, and spoken variants in a single pass over the transcript. When a preacher says _"turn to First Corinthians chapter 13"_, the automaton catches it instantly — no regex backtracking, no LLM round-trip.
+
+Handles fuzzy spoken formats: _"one nineteen verse one oh five"_ resolves to Psalm 119:105.
 
 ### Semantic Search — Paraphrases and Allusions
+
 Embeds transcript segments via [Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) through OpenRouter, then searches a pre-built HNSW vector index of 31,000+ verse embeddings. This catches what pattern matching cannot — when a speaker alludes to a verse without naming it.
 
-*"Put on the full armor so you can stand against the enemy's schemes"* matches **Ephesians 6:11** even though no book or chapter was mentioned.
+_"Put on the full armor so you can stand against the enemy's schemes"_ matches **Ephesians 6:11** even though no book or chapter was mentioned.
 
 ### Quotation Matching — Verbatim Text
+
 An inverted word index built from every verse in the Bible. When someone quotes scripture word-for-word (or close to it), the overlap score surfaces the match even without a direct reference.
 
-*"The Lord is my shepherd, I shall not want"* immediately resolves to **Psalm 23:1**.
+_"The Lord is my shepherd, I shall not want"_ immediately resolves to **Psalm 23:1**.
 
 ### Ensemble Merger
+
 All three strategies feed into a confidence-weighted merger with deduplication and cooldown. A verse detected by multiple strategies gets a boosted confidence score. A verse that was just displayed gets suppressed to avoid repetition. The result: the right verse surfaces at the right time.
 
 ## Architecture
@@ -72,14 +76,14 @@ graph TB
     OR["OpenRouter<br/>platform key"] -.-> Server
 ```
 
-| Layer | Stack |
-|-------|-------|
-| **Frontend** | React 19, Vite 7, Tailwind CSS v4, shadcn/ui, Zustand, Fabric.js |
-| **Backend** | Axum (Rust), SQLite + FTS5, Aho-Corasick, HNSW vector search |
-| **Speech-to-Text** | Deepgram Nova-3 (BYOK — bring your own key) |
-| **Embeddings** | Qwen3-Embedding-8B via OpenRouter (platform-provided) |
-| **Broadcast** | OBS Browser Source overlay with Canvas 2D rendering |
-| **Remote Control** | OSC (Stream Deck, TouchOSC) + HTTP API |
+| Layer              | Stack                                                            |
+| ------------------ | ---------------------------------------------------------------- |
+| **Frontend**       | React 19, Vite 7, Tailwind CSS v4, shadcn/ui, Zustand, Fabric.js |
+| **Backend**        | Axum (Rust), SQLite + FTS5, Aho-Corasick, HNSW vector search     |
+| **Speech-to-Text** | Deepgram Nova-3 (BYOK — bring your own key)                      |
+| **Embeddings**     | Qwen3-Embedding-8B via OpenRouter (platform-provided)            |
+| **Broadcast**      | OBS Browser Source overlay with Canvas 2D rendering              |
+| **Remote Control** | OSC (Stream Deck, TouchOSC) + HTTP API                           |
 
 ## Quick Start
 
@@ -110,11 +114,11 @@ The `start` command builds the Rust server (:4001) and launches the Vite dev ser
 Create a new Railway project with two services pointing at this repo:
 
 1. **Server** — set Root Directory to `apps/server`
-   - Add env var `OPENROUTER_API_KEY`
-   - Railway auto-assigns `PORT`
+    - Add env var `OPENROUTER_API_KEY`
+    - Railway auto-assigns `PORT`
 2. **Web** — set Root Directory to `apps/web`
-   - Add env var `VITE_API_URL` = the server service's public URL (e.g. `https://openbeam-server-production.up.railway.app`)
-   - Railway auto-assigns `PORT`
+    - Add env var `VITE_API_URL` = the server service's public URL (e.g. `https://openbeam-server-production.up.railway.app`)
+    - Railway auto-assigns `PORT`
 
 Both services pick up their `railway.toml` configs automatically.
 
@@ -122,20 +126,20 @@ Both services pick up their `railway.toml` configs automatically.
 
 **Server** (`apps/server`)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OPENROUTER_API_KEY` | Yes | — | Qwen3 embedding API key (platform cost, ~$11/mo at 10K users) |
-| `PORT` | No | 4001 | Server port (Railway sets this automatically) |
-| `DB_PATH` | No | ./data/openbeam.db | Bible database path |
-| `STATIC_DIR` | No | — | Path to built SPA files (for single-binary self-hosting) |
-| `RUST_LOG` | No | info | Log level |
+| Variable             | Required | Default            | Description                                                   |
+| -------------------- | -------- | ------------------ | ------------------------------------------------------------- |
+| `OPENROUTER_API_KEY` | Yes      | —                  | Qwen3 embedding API key (platform cost, ~$11/mo at 10K users) |
+| `PORT`               | No       | 4001               | Server port (Railway sets this automatically)                 |
+| `DB_PATH`            | No       | ./data/openbeam.db | Bible database path                                           |
+| `STATIC_DIR`         | No       | —                  | Path to built SPA files (for single-binary self-hosting)      |
+| `RUST_LOG`           | No       | info               | Log level                                                     |
 
 **Web** (`apps/web`)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `VITE_API_URL` | Yes | — | Server service URL (baked into the build) |
-| `PORT` | No | 3000 | Static file server port (Railway sets this automatically) |
+| Variable       | Required | Default | Description                                               |
+| -------------- | -------- | ------- | --------------------------------------------------------- |
+| `VITE_API_URL` | Yes      | —       | Server service URL (baked into the build)                 |
+| `PORT`         | No       | 3000    | Static file server port (Railway sets this automatically) |
 
 Users provide their own Deepgram API key in the browser. It's stored in [`localStorage`](apps/web/src/stores/settings-store.ts#L3) — the server never persists it, only [passing it through](apps/server/src/routes/stt.rs#L15-L24) to Deepgram's WebSocket per-connection.
 
@@ -175,31 +179,31 @@ packages
 
 We made deliberate trade-offs to keep OpenBeam simple and portable:
 
-| Decision | What we chose | Why |
-|----------|--------------|-----|
-| **STT** | Deepgram only (BYOK) | Real-time WebSocket streaming. Whisper API is batch-only — too slow for live. |
-| **Embeddings** | OpenRouter (Qwen3-8B), platform-paid | $0.01/1M tokens. 10K users costs ~$11/month. Users don't need a second API key. |
-| **Broadcast** | OBS Browser Source | Covers 80%+ of use cases. NDI requires native code — deferred to Rhema Desktop. |
-| **User data** | Browser localStorage only | Server is stateless. No accounts, no auth, no database of user preferences. |
-| **Detection** | Server-side Rust | The pipeline (Aho-Corasick + HNSW + quotation index) needs the full Bible DB in memory. Browser can't do this efficiently. |
-| **Backend** | Rust (Axum) | Reuses Rhema's detection crates directly. No rewrite needed. |
+| Decision       | What we chose                        | Why                                                                                                                        |
+| -------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| **STT**        | Deepgram only (BYOK)                 | Real-time WebSocket streaming. Whisper API is batch-only — too slow for live.                                              |
+| **Embeddings** | OpenRouter (Qwen3-8B), platform-paid | $0.01/1M tokens. 10K users costs ~$11/month. Users don't need a second API key.                                            |
+| **Broadcast**  | OBS Browser Source                   | Covers 80%+ of use cases. NDI requires native code — deferred to Rhema Desktop.                                            |
+| **User data**  | Browser localStorage only            | Server is stateless. No accounts, no auth, no database of user preferences.                                                |
+| **Detection**  | Server-side Rust                     | The pipeline (Aho-Corasick + HNSW + quotation index) needs the full Bible DB in memory. Browser can't do this efficiently. |
+| **Backend**    | Rust (Axum)                          | Reuses Rhema's detection crates directly. No rewrite needed.                                                               |
 
 ## OpenBeam vs Rhema Desktop
 
 OpenBeam is not a replacement for Rhema. It's the evaluation ramp.
 
-| Capability | OpenBeam (Cloud) | Rhema (Desktop) |
-|-----------|-----------------|-----------------|
-| Installation | None — open a URL | Download + build |
-| Verse detection | Full pipeline | Full pipeline |
-| Transcription | Deepgram (cloud) | Deepgram + Whisper (local, offline) |
-| Broadcast output | OBS Browser Source | NDI + display output |
-| Audio capture | Browser microphone | System audio + mic |
-| Embeddings | Cloud API (Qwen3-8B) | Local ONNX (Qwen3-0.6B) |
-| Offline mode | No | Yes (Whisper + local ONNX) |
-| Theme designer | Yes | Yes |
-| Remote control | OSC + HTTP | OSC + HTTP |
-| User data | Browser only | Local app storage |
+| Capability       | OpenBeam (Cloud)     | Rhema (Desktop)                     |
+| ---------------- | -------------------- | ----------------------------------- |
+| Installation     | None — open a URL    | Download + build                    |
+| Verse detection  | Full pipeline        | Full pipeline                       |
+| Transcription    | Deepgram (cloud)     | Deepgram + Whisper (local, offline) |
+| Broadcast output | OBS Browser Source   | NDI + display output                |
+| Audio capture    | Browser microphone   | System audio + mic                  |
+| Embeddings       | Cloud API (Qwen3-8B) | Local ONNX (Qwen3-0.6B)             |
+| Offline mode     | No                   | Yes (Whisper + local ONNX)          |
+| Theme designer   | Yes                  | Yes                                 |
+| Remote control   | OSC + HTTP           | OSC + HTTP                          |
+| User data        | Browser only         | Local app storage                   |
 
 ## Stream Orchestration (`@openbeam/streams`)
 
@@ -215,25 +219,25 @@ The original hooks used manual `setTimeout` debouncing, `useRef` timer tracking,
 
 ### Stream factories
 
-| Factory | Replaces | Key RxJS pattern |
-|---------|----------|-----------------|
-| `createTranscriptionStream` | `use-transcription.ts` event wiring | `share()` multicast for partials/finals |
-| `createDetectionStream` | `use-detection-ws.ts` | Consumes `finals$` from transcription |
-| `createSearchStream` | Manual debounce + requestId + fallback chain in search panel | `debounceTime` + `switchMap` + cascading `fallbackChain` operator |
-| `createRemoteControlStream` | 8 separate `remoteSocket.on()` listeners | `merge()` into typed discriminated union |
-| `createStatusSyncStream` | `setInterval` polling loop | `interval().pipe(switchMap(...))` |
+| Factory                     | Replaces                                                     | Key RxJS pattern                                                  |
+| --------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `createTranscriptionStream` | `use-transcription.ts` event wiring                          | `share()` multicast for partials/finals                           |
+| `createDetectionStream`     | `use-detection-ws.ts`                                        | Consumes `finals$` from transcription                             |
+| `createSearchStream`        | Manual debounce + requestId + fallback chain in search panel | `debounceTime` + `switchMap` + cascading `fallbackChain` operator |
+| `createRemoteControlStream` | 8 separate `remoteSocket.on()` listeners                     | `merge()` into typed discriminated union                          |
+| `createStatusSyncStream`    | `setInterval` polling loop                                   | `interval().pipe(switchMap(...))`                                 |
 
 ### Parity with Rhema
 
 OpenBeam's detection pipeline reuses Rhema's Rust crates server-side, but the client-side orchestration differs:
 
-| Capability | OpenBeam | Rhema Desktop |
-|-----------|---------|--------------|
-| Stream orchestration | RxJS (`@openbeam/streams`) | Tauri event system + Rust channels |
-| Sentence buffering | Server-side (Rust) | Client-side (Rust, in-process) |
-| Sermon context tracking | Server-side (Rust) | Client-side (Rust, in-process) |
-| Embedding inference | Cloud API (OpenRouter) | Local ONNX runtime |
-| Audio pipeline | Browser AudioWorklet → WebSocket | Native audio capture → in-process |
+| Capability              | OpenBeam                         | Rhema Desktop                      |
+| ----------------------- | -------------------------------- | ---------------------------------- |
+| Stream orchestration    | RxJS (`@openbeam/streams`)       | Tauri event system + Rust channels |
+| Sentence buffering      | Server-side (Rust)               | Client-side (Rust, in-process)     |
+| Sermon context tracking | Server-side (Rust)               | Client-side (Rust, in-process)     |
+| Embedding inference     | Cloud API (OpenRouter)           | Local ONNX runtime                 |
+| Audio pipeline          | Browser AudioWorklet → WebSocket | Native audio capture → in-process  |
 
 The WebSocket boundary means OpenBeam pays latency that Rhema avoids with in-process communication. The RxJS layer mitigates this by keeping the UI responsive (non-blocking streams, automatic cancellation) while the server handles the heavy detection work.
 
@@ -260,9 +264,14 @@ OpenBeam is built on the architecture and detection pipeline of [Rhema](https://
 
 The Bible database includes public domain translations and cross-reference data from [openbible.info](https://www.openbible.info/labs/cross-references/).
 
+## TODO
+
+- [ ] Re-enable semantic verse detection in the Render deployment. Currently disabled because the 486MB `data/embeddings.bin` (Qwen3 4096-dim HNSW index) doesn't fit in Render free tier's 512MB RAM. The file is excluded from the Docker image via `apps/server/.dockerignore`, so `main.rs` gracefully skips semantic loading (direct + quotation detection still run). Options to re-enable: (a) upgrade Render to a paid tier with ≥1GB RAM, (b) move to a host with more memory (e.g. Oracle Cloud Free Tier ARM VM, 24GB), or (c) generate a smaller embedding index using a lower-dim model.
+
+bash oci-retry-launch.sh
+
 ## License
 
 See [LICENSE](./LICENSE).
-
 
 https://openbeam.pages.dev/
