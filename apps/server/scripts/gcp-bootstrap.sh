@@ -28,6 +28,7 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/patt-rick/openbeam.git}"
+REPO_BRANCH="${REPO_BRANCH:-production}"
 REPO_DIR="${REPO_DIR:-$HOME/openbeam}"
 SERVER_DIR="$REPO_DIR/apps/server"
 SERVICE_USER="${SUDO_USER:-${USER}}"
@@ -72,11 +73,13 @@ fi
 # shellcheck disable=SC1090
 source "$HOME/.cargo/env"
 
-echo "==> repo at $REPO_DIR"
+echo "==> repo at $REPO_DIR (branch: $REPO_BRANCH)"
 if [[ ! -d "$REPO_DIR/.git" ]]; then
-  git clone "$REPO_URL" "$REPO_DIR"
+  git clone --branch "$REPO_BRANCH" "$REPO_URL" "$REPO_DIR"
 else
-  git -C "$REPO_DIR" pull --ff-only
+  git -C "$REPO_DIR" fetch origin "$REPO_BRANCH"
+  git -C "$REPO_DIR" checkout "$REPO_BRANCH"
+  git -C "$REPO_DIR" pull --ff-only origin "$REPO_BRANCH"
 fi
 
 echo "==> cargo build --release (single-job, ~25-40 min on e2-micro with swap)"
