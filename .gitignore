@@ -12,4 +12,5 @@ target/
 .dev/
 flake.lock
 Caddyfile
+!apps/server/scripts/Caddyfile
 apps/web/test-results
