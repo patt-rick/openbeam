@@ -123,7 +123,7 @@ sure it was the `.pub` file.
 From the SSH session:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tensorkithq/openbeam/production/apps/server/scripts/oci-bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/patt-rick/openbeam/production/apps/server/scripts/oci-bootstrap.sh | bash
 ```
 
 This installs Caddy, Rust, clones the repo, builds the release binary,

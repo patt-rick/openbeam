@@ -2,7 +2,7 @@
 # Bootstrap an OCI Ampere A1 VM (Ubuntu 22.04 ARM64) for openbeam-server.
 #
 # Usage on a fresh VM, as the `ubuntu` user:
-#   curl -fsSL https://raw.githubusercontent.com/tensorkithq/openbeam/main/apps/server/scripts/oci-bootstrap.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/patt-rick/openbeam/production/apps/server/scripts/oci-bootstrap.sh | bash
 #
 # Or after `git clone`:
 #   bash apps/server/scripts/oci-bootstrap.sh
@@ -25,7 +25,7 @@
 
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/tensorkithq/openbeam.git}"
+REPO_URL="${REPO_URL:-https://github.com/patt-rick/openbeam.git}"
 REPO_DIR="${REPO_DIR:-$HOME/openbeam}"
 SERVER_DIR="$REPO_DIR/apps/server"
 SERVICE_USER="${SUDO_USER:-${USER:-ubuntu}}"
