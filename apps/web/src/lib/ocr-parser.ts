@@ -1,6 +1,6 @@
 import type { CustomTranslationFile } from "./local-translations"
 
-interface BookDef {
+export interface BookDef {
   book_number: number
   name: string
   abbreviation: string
@@ -9,7 +9,7 @@ interface BookDef {
 }
 
 // 66-book canonical table. Aliases are matched case-insensitively on a whole line.
-const BOOKS: BookDef[] = [
+export const BOOKS: BookDef[] = [
   { book_number: 1, name: "Genesis", abbreviation: "Gen", testament: "OT", aliases: ["genesis", "gen", "ge", "gn"] },
   { book_number: 2, name: "Exodus", abbreviation: "Exod", testament: "OT", aliases: ["exodus", "exod", "exo", "ex"] },
   { book_number: 3, name: "Leviticus", abbreviation: "Lev", testament: "OT", aliases: ["leviticus", "lev", "lv"] },
@@ -92,7 +92,7 @@ function stripCommonPrefixes(s: string): string {
     .trim()
 }
 
-function matchBook(rawLine: string): BookDef | null {
+export function matchBook(rawLine: string): BookDef | null {
   const trimmed = rawLine.trim().toLowerCase().replace(/\s+/g, " ")
   if (!trimmed || trimmed.length > 40) return null
   const normalized = stripCommonPrefixes(trimmed).replace(/[.:]+$/g, "").trim()

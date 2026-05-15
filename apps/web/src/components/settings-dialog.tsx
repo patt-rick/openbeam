@@ -51,7 +51,8 @@ import {
   isLocalTranslationId,
   addLocalTranslation,
   deleteLocalTranslation,
-  validateTranslationFile,
+  parseTranslationJson,
+  deriveMetaFromFilename,
 } from "@/lib/local-translations"
 
 type NavSection = "audio" | "speech" | "bible" | "display" | "api-keys" | "remote" | "help"
@@ -312,9 +313,21 @@ function BibleSection() {
     try {
       const text = await file.text()
       if (uploadFormat === "json") {
-        const parsed = validateTranslationFile(JSON.parse(text))
+        const derived = deriveMetaFromFilename(file.name)
+        const fallback = {
+          abbreviation: meta.abbreviation.trim() || derived.abbreviation,
+          title: meta.title.trim() || derived.title,
+          language: meta.language.trim() || derived.language,
+        }
+        const { file: parsed, report } = parseTranslationJson(JSON.parse(text), fallback)
         await addLocalTranslation(parsed)
-        setParseReport(`Imported ${parsed.abbreviation} — ${parsed.title}.`)
+        const formatLabel = report.format === "nested-book-chapter-verse" ? "nested" : "canonical"
+        const skipped = report.unknownBooks.length
+          ? ` Skipped ${report.unknownBooks.length} unrecognized book(s): ${report.unknownBooks.slice(0, 3).join(", ")}${report.unknownBooks.length > 3 ? "…" : ""}.`
+          : ""
+        setParseReport(
+          `Imported ${parsed.abbreviation} — ${parsed.title} (${formatLabel}): ${report.books} books, ${report.chapters} chapters, ${report.verses} verses.${skipped}`,
+        )
       } else if (uploadFormat === "ocr") {
         const { parseOcrBibleText } = await import("@/lib/ocr-parser")
         const { file: parsed, report } = parseOcrBibleText(text, {
@@ -439,7 +452,7 @@ function BibleSection() {
                   <span>
                     <span className="font-medium">JSON</span>
                     <span className="block text-[0.625rem] text-muted-foreground">
-                      OpenBeam's own schema (book_number / chapters / verses).
+                      OpenBeam's schema or nested {`{Book: {Chapter: {Verse: text}}}`}. Metadata auto-derived from filename.
                     </span>
                   </span>
                 </label>
