@@ -90,7 +90,8 @@ export interface JsonImportReport {
   unknownBooks: string[]
 }
 
-/** Title-case + initials from a filename like "NEW INTERNATIONAL VERSION.json". */
+/** Title-case + initials from a filename like "NEW INTERNATIONAL VERSION.json".
+ *  Single-word names like "Twi.json" become "TWI" rather than "T". */
 export function deriveMetaFromFilename(filename: string): {
   abbreviation: string
   title: string
@@ -101,18 +102,29 @@ export function deriveMetaFromFilename(filename: string): {
   const title = words
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(" ")
-  const abbreviation = words
-    .filter((w) => /^[a-z]/i.test(w))
-    .map((w) => w[0].toUpperCase())
-    .join("")
+  const letterWords = words.filter((w) => /^[a-z]/i.test(w))
+  const abbreviation =
+    letterWords.length === 1
+      ? letterWords[0].slice(0, 4).toUpperCase()
+      : letterWords.map((w) => w[0].toUpperCase()).join("")
   return { abbreviation: abbreviation || "CUSTOM", title: title || "Custom", language: "en" }
 }
 
+function normalizeTestament(raw: unknown, fallback: "OT" | "NT"): "OT" | "NT" {
+  if (typeof raw !== "string") return fallback
+  const s = raw.trim().toLowerCase()
+  if (s === "ot" || s === "old" || s === "old testament") return "OT"
+  if (s === "nt" || s === "new" || s === "new testament") return "NT"
+  return fallback
+}
+
 /**
- * Parse a Bible JSON file in either OpenBeam's canonical shape or the common
- * nested `{ "Genesis": { "1": { "1": "In the beginning..." } } }` shape.
- * Metadata (abbreviation/title/language) is taken from the file when present,
- * otherwise from `fallback` (typically derived from the filename).
+ * Parse a Bible JSON file in either OpenBeam's canonical shape, the common
+ * nested `{ "Genesis": { "1": { "1": "In the beginning..." } } }` shape, or a
+ * loose `{ books: [{ name, chapters: [{ chapter, verses: [{ verse, text }] }] }] }`
+ * shape missing book_number/abbreviation/testament. Metadata
+ * (abbreviation/title/language) is taken from the file when present, otherwise
+ * from `fallback` (typically derived from the filename).
  */
 export function parseTranslationJson(
   raw: unknown,
@@ -120,24 +132,96 @@ export function parseTranslationJson(
 ): { file: CustomTranslationFile; report: JsonImportReport } {
   if (!raw || typeof raw !== "object") throw new Error("Not a JSON object")
 
-  // Canonical shape: { abbreviation, title, language, books: [...] }
-  const maybeCanonical = raw as Partial<CustomTranslationFile>
+  // Canonical / loose-array shape: { [abbreviation], [title], [language], books: [{ name, chapters: [...] }] }
+  const maybeCanonical = raw as Partial<CustomTranslationFile> & Record<string, unknown>
   if (Array.isArray(maybeCanonical.books)) {
-    const file = validateTranslationFile({
-      abbreviation: maybeCanonical.abbreviation || fallback.abbreviation,
-      title: maybeCanonical.title || fallback.title,
-      language: maybeCanonical.language || fallback.language,
-      books: maybeCanonical.books,
-    })
-    let chapters = 0
-    let verses = 0
-    for (const b of file.books) {
-      chapters += b.chapters.length
-      for (const c of b.chapters) verses += c.verses.length
+    const books: CustomTranslationFile["books"] = []
+    const unknownBooks: string[] = []
+    let totalChapters = 0
+    let totalVerses = 0
+
+    for (const rawBook of maybeCanonical.books as unknown[]) {
+      if (!rawBook || typeof rawBook !== "object") continue
+      const b = rawBook as Record<string, unknown>
+      const name = typeof b.name === "string" ? b.name : ""
+      if (!name) continue
+
+      const def = matchBook(name) ?? BOOKS.find((x) => x.name.toLowerCase() === name.toLowerCase())
+      const book_number =
+        typeof b.book_number === "number"
+          ? b.book_number
+          : def?.book_number
+      if (book_number === undefined) {
+        unknownBooks.push(name)
+        continue
+      }
+      const abbreviation =
+        typeof b.abbreviation === "string" && b.abbreviation
+          ? b.abbreviation
+          : def?.abbreviation ?? name.slice(0, 3)
+      const testament = normalizeTestament(b.testament, def?.testament ?? "OT")
+
+      const rawChapters = Array.isArray(b.chapters) ? b.chapters : []
+      const chapters: CustomTranslationFile["books"][number]["chapters"] = []
+      for (const rc of rawChapters) {
+        if (!rc || typeof rc !== "object") continue
+        const c = rc as Record<string, unknown>
+        const chapterNum =
+          typeof c.chapter === "number"
+            ? c.chapter
+            : typeof c.chapter === "string"
+              ? parseInt(c.chapter, 10)
+              : NaN
+        if (!Number.isFinite(chapterNum)) continue
+        const rawVerses = Array.isArray(c.verses) ? c.verses : []
+        const verses: Array<{ verse: number; text: string }> = []
+        for (const rv of rawVerses) {
+          if (!rv || typeof rv !== "object") continue
+          const v = rv as Record<string, unknown>
+          const verseNum =
+            typeof v.verse === "number"
+              ? v.verse
+              : typeof v.verse === "string"
+                ? parseInt(v.verse, 10)
+                : NaN
+          const text = typeof v.text === "string" ? v.text : ""
+          if (!Number.isFinite(verseNum) || !text) continue
+          verses.push({ verse: verseNum, text })
+        }
+        if (verses.length === 0) continue
+        verses.sort((a, b) => a.verse - b.verse)
+        chapters.push({ chapter: chapterNum, verses })
+        totalVerses += verses.length
+      }
+      if (chapters.length === 0) continue
+      chapters.sort((a, b) => a.chapter - b.chapter)
+      totalChapters += chapters.length
+      books.push({ book_number, name: def?.name ?? name, abbreviation, testament, chapters })
+    }
+
+    if (books.length === 0) throw new Error("No usable books found in JSON")
+    books.sort((a, b) => a.book_number - b.book_number)
+
+    const file: CustomTranslationFile = {
+      abbreviation:
+        (typeof maybeCanonical.abbreviation === "string" && maybeCanonical.abbreviation) ||
+        fallback.abbreviation,
+      title:
+        (typeof maybeCanonical.title === "string" && maybeCanonical.title) || fallback.title,
+      language:
+        (typeof maybeCanonical.language === "string" && maybeCanonical.language) ||
+        fallback.language,
+      books,
     }
     return {
       file,
-      report: { format: "canonical", books: file.books.length, chapters, verses, unknownBooks: [] },
+      report: {
+        format: "canonical",
+        books: books.length,
+        chapters: totalChapters,
+        verses: totalVerses,
+        unknownBooks,
+      },
     }
   }
 

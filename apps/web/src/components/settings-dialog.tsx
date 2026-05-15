@@ -369,6 +369,8 @@ function BibleSection() {
     ? "text/plain,.txt"
     : "application/xml,text/xml,.xml"
   const needsMeta = uploadFormat === "ocr"
+  const showMeta = uploadFormat === "ocr" || uploadFormat === "json"
+  const metaLabel = needsMeta ? "2. Translation info" : "2. Translation info (optional — auto-filled)"
 
   const handleDelete = async (id: number) => {
     await deleteLocalTranslation(id)
@@ -477,14 +479,14 @@ function BibleSection() {
               </RadioGroup>
             </div>
 
-            {needsMeta && (
+            {showMeta && (
               <div className="flex flex-col gap-2">
                 <span className="text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground">
-                  2. Translation info
+                  {metaLabel}
                 </span>
                 <div className="grid grid-cols-3 gap-2">
                   <Input
-                    placeholder="Abbrev (e.g. MYT)"
+                    placeholder="Abbrev (e.g. NIV)"
                     value={meta.abbreviation}
                     onChange={(e) => setMeta((m) => ({ ...m, abbreviation: e.target.value }))}
                     className="h-7 text-xs"
@@ -496,7 +498,7 @@ function BibleSection() {
                     className="h-7 text-xs"
                   />
                   <Input
-                    placeholder="Language (en)"
+                    placeholder="Lang (en, tw, …)"
                     value={meta.language}
                     onChange={(e) => setMeta((m) => ({ ...m, language: e.target.value }))}
                     className="h-7 text-xs"
@@ -507,7 +509,7 @@ function BibleSection() {
 
             <div className="flex flex-col gap-2">
               <span className="text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground">
-                {needsMeta ? "3. Pick file" : "2. Pick file"}
+                {showMeta ? "3. Pick file" : "2. Pick file"}
               </span>
               <input
                 ref={fileInputRef}
