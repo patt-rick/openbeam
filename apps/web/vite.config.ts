@@ -7,6 +7,9 @@ import { defineConfig } from "vite"
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  optimizeDeps: {
+    exclude: ["@sqlite.org/sqlite-wasm"],
+  },
   test: {
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["e2e/**"],

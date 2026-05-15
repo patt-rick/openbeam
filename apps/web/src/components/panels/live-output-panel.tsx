@@ -2,7 +2,7 @@ import { useEffect } from "react"
 import { PanelHeader } from "@/components/ui/panel-header"
 import { CanvasVerse } from "@/components/ui/canvas-verse"
 import { cn } from "@/lib/utils"
-import { useBroadcastStore, useBibleStore } from "@/stores"
+import { useBroadcastStore, useBibleStore, useSongStore } from "@/stores"
 import { deriveLiveVerse } from "@/hooks/use-broadcast"
 
 export function LiveOutputPanel() {
@@ -11,6 +11,9 @@ export function LiveOutputPanel() {
   const activeThemeId = useBroadcastStore((s) => s.activeThemeId)
 
   const selectedVerse = useBibleStore((s) => s.selectedVerse)
+  const selectedSong = useSongStore((s) => s.selectedSong)
+  const selectedStanzas = useSongStore((s) => s.selectedStanzas)
+  const currentStanzaIndex = useSongStore((s) => s.currentStanzaIndex)
   const translations = useBibleStore((s) => s.translations)
   const activeTranslationId = useBibleStore((s) => s.activeTranslationId)
 
@@ -21,6 +24,9 @@ export function LiveOutputPanel() {
   const verseData = deriveLiveVerse({
     isLive,
     selectedVerse,
+    selectedSong,
+    selectedStanzas,
+    currentStanzaIndex,
     translation,
   })
 

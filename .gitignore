@@ -14,3 +14,7 @@ flake.lock
 Caddyfile
 !apps/server/scripts/Caddyfile
 apps/web/test-results
+
+# User song library source files (copyrighted — keep local only)
+apps/server/data/songs-source/
+apps/server/data/songs.sqlite

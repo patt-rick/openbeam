@@ -1,4 +1,4 @@
-import { useBibleStore } from "@/stores"
+import { useBibleStore, useSongStore } from "@/stores"
 import { api } from "@/services"
 import type { Verse } from "@/types"
 import {
@@ -95,8 +95,14 @@ export const bibleActions = {
     useBibleStore
       .getState()
       .setPendingNavigation({ bookNumber, chapter, verse }),
-  selectVerse: (verse: Verse | null) =>
-    useBibleStore.getState().selectVerse(verse),
+  selectVerse: (verse: Verse | null) => {
+    useBibleStore.getState().selectVerse(verse)
+    // Mutual exclusion with song selection: choosing a verse clears any active song so the
+    // broadcast preview shows the most-recently-picked item.
+    if (verse !== null && useSongStore.getState().selectedSong) {
+      useSongStore.getState().setSelectedSong(null)
+    }
+  },
 }
 
 export function useBible() {

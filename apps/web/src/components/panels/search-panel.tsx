@@ -28,14 +28,17 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { bibleActions } from "@/hooks/use-bible"
-import { useBibleStore, useQueueStore } from "@/stores"
+import { useBibleStore, useQueueStore, useSongStore } from "@/stores"
 import type { Book, Verse } from "@/types"
 import { Input } from "@/components/ui/input"
 import { searchContextWithFuse, prefetchFuseIndex } from "@/lib/context-search"
 import { api } from "@/services"
 import { isLocalTranslationId, searchLocalVerses } from "@/lib/local-translations"
+import { searchSongs } from "@/lib/songs/search"
+import { openSettings } from "@/lib/settings-dialog"
+import { MusicIcon } from "lucide-react"
 
-type SearchTab = "book" | "context"
+type SearchTab = "book" | "context" | "songs"
 
 /** Highlights words from the query that appear in the text (like Logos AI). */
 const HighlightedText = memo(function HighlightedText({ text, query }: { text: string; query: string }) {
@@ -132,6 +135,20 @@ export function SearchPanel() {
   const [selectedVerseId, setSelectedVerseId] = useState<number | null>(null)
   const [_chapterInput, setChapterInput] = useState("")
   const [contextQuery, setContextQuery] = useState("")
+  const [songQuery, setSongQuery] = useState("")
+
+  const songResults = useSongStore((s) => s.results)
+  const songLibraryCount = useSongStore((s) => s.libraryCount)
+  const refreshSongLibraryMeta = useSongStore((s) => s.refreshLibraryMeta)
+  const setSongResults = useSongStore((s) => s.setResults)
+  const songSearching = useSongStore((s) => s.searching)
+  const setSongSearching = useSongStore((s) => s.setSearching)
+  const selectedSong = useSongStore((s) => s.selectedSong)
+  const setSelectedSong = useSongStore((s) => s.setSelectedSong)
+  const selectedStanzas = useSongStore((s) => s.selectedStanzas)
+  const currentStanzaIndex = useSongStore((s) => s.currentStanzaIndex)
+  const nextStanza = useSongStore((s) => s.nextStanza)
+  const prevStanza = useSongStore((s) => s.prevStanza)
 
   // EasyWorship-style autocomplete
   const [quickInput, setQuickInput] = useState("")
@@ -292,6 +309,22 @@ export function SearchPanel() {
   const canNextVerse =
     currentChapter.length > 0 && verseIdx !== currentChapter.length - 1
 
+  const handleSongKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return
+      if (!selectedSong) return
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault()
+        prevStanza()
+      } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault()
+        nextStanza()
+      }
+    },
+    [selectedSong, prevStanza, nextStanza],
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const target = e.target as HTMLElement
@@ -358,6 +391,37 @@ export function SearchPanel() {
     setContextQuery(query)
     contextQuery$.next(query)
   }, [contextQuery$])
+
+  // Refresh song library metadata when the panel mounts so the empty-state copy is accurate.
+  useEffect(() => {
+    refreshSongLibraryMeta().catch((e) => console.error("[songs] meta load failed:", e))
+  }, [refreshSongLibraryMeta])
+
+  // Debounced song search — keeps the UI responsive while typing.
+  useEffect(() => {
+    const q = songQuery.trim()
+    if (q.length < 2) {
+      setSongResults([])
+      setSongSearching(false)
+      return
+    }
+    let cancelled = false
+    setSongSearching(true)
+    const handle = setTimeout(() => {
+      searchSongs(q, 30)
+        .then((results) => {
+          if (!cancelled) setSongResults(results)
+        })
+        .catch((e) => console.error("[songs] search failed:", e))
+        .finally(() => {
+          if (!cancelled) setSongSearching(false)
+        })
+    }, 180)
+    return () => {
+      cancelled = true
+      clearTimeout(handle)
+    }
+  }, [songQuery, setSongResults, setSongSearching])
 
   // EasyWorship-style autocomplete: pre-load chapter for dropdown only.
   // Navigation/selection is deferred to Enter or click — typing must not
@@ -439,7 +503,13 @@ export function SearchPanel() {
       ref={panelRef}
       data-slot="search-panel"
       className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card"
-      onKeyDown={activeTab === "book" ? handleKeyDown : undefined}
+      onKeyDown={
+        activeTab === "book"
+          ? handleKeyDown
+          : activeTab === "songs"
+          ? handleSongKeyDown
+          : undefined
+      }
       tabIndex={-1}
     >
       {/* STICKY: Tab row + search input */}
@@ -475,9 +545,31 @@ export function SearchPanel() {
             <SparklesIcon className={cn("size-3.5", activeTab === "context" ? "text-primary" : "text-muted-foreground")} />
             Context search
           </button>
+          <button
+            onClick={() => setActiveTab("songs")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
+              activeTab === "songs"
+                ? "border-primary/50 bg-primary/15"
+                : "border-border bg-background text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <MusicIcon className={cn("size-3.5", activeTab === "songs" ? "text-primary" : "text-muted-foreground")} />
+            Songs
+          </button>
         </div>
 
-        {activeTab === "book" ? (
+        {activeTab === "songs" ? (
+          <div className="flex flex-1 items-center gap-2 pr-3">
+            <Input
+              placeholder={songLibraryCount > 0 ? "Search title, author, or lyrics…" : "Import a song library in settings"}
+              value={songQuery}
+              onChange={(e) => setSongQuery(e.target.value)}
+              disabled={songLibraryCount === 0}
+              className="h-7 flex-1 text-xs"
+            />
+          </div>
+        ) : activeTab === "book" ? (
           <div className="flex flex-1 items-center gap-2 pr-3">
             <div className="relative flex-1">
               {quickSuggestion && quickSuggestion !== quickInput && (
@@ -662,6 +754,113 @@ export function SearchPanel() {
             </div>
           </div>
         </>
+      )}
+
+      {activeTab === "songs" && selectedSong && selectedStanzas.length > 0 && (
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2 min-h-9">
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <h3 className="truncate text-sm font-semibold text-foreground">{selectedSong.title}</h3>
+            <span className="truncate text-[0.625rem] text-muted-foreground">
+              {selectedStanzas[currentStanzaIndex]?.label ??
+                `Stanza ${currentStanzaIndex + 1} of ${selectedStanzas.length}`}
+              {selectedStanzas[currentStanzaIndex]?.label
+                ? ` · ${currentStanzaIndex + 1}/${selectedStanzas.length}`
+                : ""}
+            </span>
+          </div>
+          <TooltipProvider>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={prevStanza}
+                    disabled={currentStanzaIndex <= 0}
+                  >
+                    <ArrowUpIcon className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Previous stanza</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={nextStanza}
+                    disabled={currentStanzaIndex >= selectedStanzas.length - 1}
+                  >
+                    <ArrowDownIcon className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Next stanza</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
+        </div>
+      )}
+
+      {activeTab === "songs" && (
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-0 p-2">
+            {songLibraryCount === 0 && (
+              <div className="flex flex-col items-center gap-2 p-6 text-center">
+                <p className="text-xs text-muted-foreground">
+                  No song library imported yet.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openSettings("songs")}
+                >
+                  Open Settings → Songs
+                </Button>
+              </div>
+            )}
+            {songLibraryCount > 0 && songQuery.trim().length < 2 && (
+              <p className="p-4 text-center text-xs text-muted-foreground">
+                {songLibraryCount} song{songLibraryCount === 1 ? "" : "s"} in library — type to search.
+              </p>
+            )}
+            {songLibraryCount > 0 && songQuery.trim().length >= 2 && !songSearching && songResults.length === 0 && (
+              <p className="p-4 text-center text-xs text-muted-foreground">
+                No matches in your song library.
+              </p>
+            )}
+            {songResults.map((result) => {
+              const isSelected = selectedSong?.id === result.song.id
+              return (
+                <div
+                  key={result.song.id}
+                  onClick={() => {
+                    // Mutual exclusion: selecting a song clears the selected verse so they don't
+                    // compete for the broadcast preview slot.
+                    bibleActions.selectVerse(null)
+                    setSelectedSong(result.song)
+                  }}
+                  className={cn(
+                    "group flex cursor-pointer flex-col gap-1 rounded-lg p-3 transition-colors",
+                    isSelected
+                      ? "border border-primary/50 bg-primary/10"
+                      : "hover:bg-muted/50"
+                  )}
+                >
+                  <div className="flex shrink-0 flex-row items-baseline justify-between gap-2">
+                    <span className="text-xs font-semibold text-foreground">{result.song.title}</span>
+                    {result.song.author && (
+                      <span className="text-[0.625rem] text-muted-foreground">{result.song.author}</span>
+                    )}
+                  </div>
+                  <p
+                    className="text-xs leading-relaxed text-muted-foreground"
+                    dangerouslySetInnerHTML={{ __html: result.snippet }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
       )}
 
       {activeTab === "context" && (

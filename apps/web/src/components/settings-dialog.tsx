@@ -40,8 +40,12 @@ import {
   HelpCircleIcon,
   GraduationCapIcon,
   BrainCircuitIcon,
+  MusicIcon,
+  TrashIcon,
 } from "lucide-react"
-import { useSettingsStore, useBibleStore } from "@/stores"
+import { useSettingsStore, useBibleStore, useSongStore } from "@/stores"
+import { importSongLibrary, type ImportProgress } from "@/lib/songs/importer"
+import { clearSongLibrary } from "@/lib/songs/sqlite"
 import { useTutorialStore } from "@/stores/tutorial-store"
 import { api } from "@/services"
 import { useSettingsDialogStore } from "@/lib/settings-dialog"
@@ -55,12 +59,13 @@ import {
   deriveMetaFromFilename,
 } from "@/lib/local-translations"
 
-type NavSection = "audio" | "speech" | "bible" | "display" | "api-keys" | "remote" | "help"
+type NavSection = "audio" | "speech" | "bible" | "songs" | "display" | "api-keys" | "remote" | "help"
 
 const navItems: { name: string; id: NavSection; icon: React.ReactNode }[] = [
   { name: "Audio", id: "audio", icon: <MicIcon strokeWidth={2} /> },
   { name: "Speech Recognition", id: "speech", icon: <BrainCircuitIcon strokeWidth={2} /> },
   { name: "Bible", id: "bible", icon: <BookOpenIcon strokeWidth={2} /> },
+  { name: "Songs", id: "songs", icon: <MusicIcon strokeWidth={2} /> },
   { name: "Display Mode", id: "display", icon: <TvIcon strokeWidth={2} /> },
   { name: "Remote Control", id: "remote", icon: <RadioIcon strokeWidth={2} /> },
   { name: "API Keys", id: "api-keys", icon: <KeyIcon strokeWidth={2} /> },
@@ -670,6 +675,170 @@ function RemoteControlSection() {
   )
 }
 
+function SongsSection() {
+  const libraryCount = useSongStore((s) => s.libraryCount)
+  const libraryImportedAt = useSongStore((s) => s.libraryImportedAt)
+  const refreshLibraryMeta = useSongStore((s) => s.refreshLibraryMeta)
+
+  const [metadataFile, setMetadataFile] = useState<File | null>(null)
+  const [lyricsFile, setLyricsFile] = useState<File | null>(null)
+  const [progress, setProgress] = useState<ImportProgress | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ count: number; skipped: number; warnings: number } | null>(null)
+
+  const metadataInputRef = useRef<HTMLInputElement>(null)
+  const lyricsInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    refreshLibraryMeta().catch((e) => console.error("[songs] meta load failed:", e))
+  }, [refreshLibraryMeta])
+
+  const importedDate = libraryImportedAt
+    ? new Date(libraryImportedAt).toLocaleString()
+    : null
+
+  const handleImport = async () => {
+    if (!metadataFile || !lyricsFile) {
+      setError("Pick both files before importing.")
+      return
+    }
+    setError(null)
+    setResult(null)
+    setBusy(true)
+    try {
+      const r = await importSongLibrary(metadataFile, lyricsFile, setProgress)
+      setResult({ count: r.count, skipped: r.skipped, warnings: r.warnings.length })
+      if (r.warnings.length) console.warn("[songs] import warnings:", r.warnings)
+      await refreshLibraryMeta()
+      setMetadataFile(null)
+      setLyricsFile(null)
+      if (metadataInputRef.current) metadataInputRef.current.value = ""
+      if (lyricsInputRef.current) lyricsInputRef.current.value = ""
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+      setProgress(null)
+    }
+  }
+
+  const handleClear = async () => {
+    if (!confirm("Remove the imported song library from this device?")) return
+    setBusy(true)
+    try {
+      await clearSongLibrary()
+      await refreshLibraryMeta()
+      setResult(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Library</label>
+        <div className="rounded-lg border border-border bg-card p-4">
+          {libraryCount > 0 ? (
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium">
+                  {libraryCount} song{libraryCount === 1 ? "" : "s"} imported
+                </p>
+                {importedDate && (
+                  <p className="text-[0.625rem] text-muted-foreground">Last imported {importedDate}</p>
+                )}
+                <p className="text-[0.625rem] text-muted-foreground">
+                  Stored locally in this browser. Never uploaded.
+                </p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={handleClear} disabled={busy}>
+                <TrashIcon className="mr-1.5 size-3.5" />
+                Clear
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No song library on this device yet. Import the two SQLite files below to enable song search.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t pt-4">
+        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Import</label>
+        <p className="text-[0.625rem] leading-relaxed text-muted-foreground">
+          Pick two SQLite files from your song presentation software's data folder: the metadata DB (contains titles and authors) and the lyrics DB (contains the RTF lyrics). Both files stay on this device — nothing is uploaded.
+        </p>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <label className="text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground">1. Songs metadata DB</label>
+            {metadataFile && <Badge variant="outline" className="text-[0.5rem]">{metadataFile.name}</Badge>}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              ref={metadataInputRef}
+              type="file"
+              accept=".db,.sqlite,.sqlite3,application/x-sqlite3"
+              onChange={(e) => setMetadataFile(e.target.files?.[0] ?? null)}
+              className="hidden"
+            />
+            <Button variant="outline" size="sm" onClick={() => metadataInputRef.current?.click()} disabled={busy}>
+              Choose file
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2 mt-2">
+            <label className="text-[0.625rem] font-medium uppercase tracking-wider text-muted-foreground">2. Lyrics DB</label>
+            {lyricsFile && <Badge variant="outline" className="text-[0.5rem]">{lyricsFile.name}</Badge>}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              ref={lyricsInputRef}
+              type="file"
+              accept=".db,.sqlite,.sqlite3,application/x-sqlite3"
+              onChange={(e) => setLyricsFile(e.target.files?.[0] ?? null)}
+              className="hidden"
+            />
+            <Button variant="outline" size="sm" onClick={() => lyricsInputRef.current?.click()} disabled={busy}>
+              Choose file
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={handleImport} disabled={busy || !metadataFile || !lyricsFile}>
+            {busy ? "Importing…" : "Import library"}
+          </Button>
+          {progress && (
+            <span className="text-[0.625rem] text-muted-foreground">
+              {progress.phase}
+              {progress.total > 0 && progress.phase === "decoding"
+                ? ` (${progress.current}/${progress.total})`
+                : ""}
+            </span>
+          )}
+        </div>
+
+        {error && (
+          <div className="rounded-md border border-red-500/40 bg-red-500/10 p-2 text-[0.625rem] text-red-600 dark:text-red-300">
+            {error}
+          </div>
+        )}
+        {result && (
+          <div className="rounded-md border border-green-500/40 bg-green-500/10 p-2 text-[0.625rem] text-green-700 dark:text-green-300">
+            Imported {result.count} song{result.count === 1 ? "" : "s"}.
+            {result.skipped > 0 && ` Skipped ${result.skipped}.`}
+            {result.warnings > 0 && ` ${result.warnings} warning${result.warnings === 1 ? "" : "s"} (see console).`}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function HelpSection() {
   const closeSettings = useSettingsDialogStore((s) => s.closeSettings)
 
@@ -725,6 +894,7 @@ const sectionTitles: Record<NavSection, string> = {
   audio: "Audio",
   speech: "Speech Recognition",
   bible: "Bible Translation",
+  songs: "Song Library",
   display: "Display Mode",
   remote: "Remote Control",
   "api-keys": "API Keys",
@@ -735,6 +905,7 @@ const sectionComponents: Record<NavSection, React.FC> = {
   audio: AudioSection,
   speech: SpeechSection,
   bible: BibleSection,
+  songs: SongsSection,
   display: DisplayModeSection,
   remote: RemoteControlSection,
   "api-keys": ApiKeysSection,

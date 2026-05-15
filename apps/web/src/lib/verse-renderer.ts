@@ -811,6 +811,42 @@ function renderVerseImpl(
     )
   }
 
+  if (verse.footer) {
+    drawFooter(ctx, scaledTheme, verse.footer)
+  }
+
   ctx.restore()
   return metrics
+}
+
+function drawFooter(
+  ctx: CanvasRenderingContext2D,
+  theme: BroadcastTheme,
+  text: string,
+): void {
+  const canvasW = theme.resolution.width
+  const canvasH = theme.resolution.height
+  const fontSize = Math.max(8, theme.reference.fontSize * 0.55)
+  // 4% of canvas height above the bottom edge — gives the chyron room to breathe.
+  const y = canvasH - Math.max(fontSize * 1.4, canvasH * 0.04)
+
+  ctx.save()
+  ctx.font = `${theme.reference.fontWeight} ${fontSize}px "${theme.reference.fontFamily}", sans-serif`
+  ctx.fillStyle = theme.reference.color
+  ctx.globalAlpha = 0.7
+  ctx.textBaseline = "alphabetic"
+  ctx.textAlign = "center"
+
+  // Truncate with an ellipsis if it would overflow the canvas width.
+  const maxWidth = canvasW * 0.9
+  let drawText = text
+  if (ctx.measureText(drawText).width > maxWidth) {
+    while (drawText.length > 1 && ctx.measureText(drawText + "…").width > maxWidth) {
+      drawText = drawText.slice(0, -1)
+    }
+    drawText += "…"
+  }
+
+  ctx.fillText(drawText, canvasW / 2, y)
+  ctx.restore()
 }

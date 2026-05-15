@@ -22,6 +22,7 @@
     "@fontsource/geist-mono": "^5.2.7",
     "@openbeam/streams": "workspace:*",
     "@paralleldrive/cuid2": "^3.3.0",
+    "@sqlite.org/sqlite-wasm": "3.53.0-build1",
     "@tailwindcss/vite": "^4.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
