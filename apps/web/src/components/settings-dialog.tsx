@@ -355,6 +355,7 @@ function BibleSection() {
       }
       await refresh()
       setAddOpen(false)
+      setMeta({ abbreviation: "", title: "", language: "en" })
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : String(err))
     } finally {

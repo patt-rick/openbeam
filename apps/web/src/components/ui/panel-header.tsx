@@ -1,6 +1,23 @@
 import * as React from "react"
+import { MinusIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+
+const PanelMinimizeContext = React.createContext<(() => void) | null>(null)
+
+export function PanelMinimizeProvider({
+  onMinimize,
+  children,
+}: {
+  onMinimize: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <PanelMinimizeContext.Provider value={onMinimize}>
+      {children}
+    </PanelMinimizeContext.Provider>
+  )
+}
 
 function PanelHeader({
   className,
@@ -12,6 +29,7 @@ function PanelHeader({
   title: string
   icon?: React.ReactNode
 }) {
+  const onMinimize = React.useContext(PanelMinimizeContext)
   return (
     <div
       data-slot="panel-header"
@@ -25,9 +43,18 @@ function PanelHeader({
         {icon}
         {title}
       </span>
-      {children && (
-        <div className="flex items-center gap-1">{children}</div>
-      )}
+      <div className="flex items-center gap-1">
+        {children}
+        {onMinimize && (
+          <button
+            onClick={onMinimize}
+            title="Minimize"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <MinusIcon className="size-3" />
+          </button>
+        )}
+      </div>
     </div>
   )
 }
