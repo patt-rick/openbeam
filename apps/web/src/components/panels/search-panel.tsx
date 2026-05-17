@@ -390,6 +390,27 @@ export function SearchPanel() {
       e.preventDefault()
       const nextInput = getTabNavigationResult(quickInput, quickSuggestion)
       setQuickInput(nextInput)
+
+      // Glance-nav: move the panel to the suggested target without selecting
+      // a verse. Keeps the input focused so the user can keep typing.
+      const result = getAutocompleteSuggestion(quickInput, books)
+      if (result.matchedBook && result.chapter) {
+        const book = result.matchedBook
+        const targetChapter = result.chapter
+        const targetVerse = result.verse ?? 1
+        applyNavigationSelection(book, targetChapter)
+        bibleActions
+          .loadChapter(book.book_number, targetChapter)
+          .then((verses) => {
+            const target = verses.find((v) => v.verse === targetVerse)
+            if (target) {
+              document
+                .getElementById(`verse-${target.id}`)
+                ?.scrollIntoView({ behavior: "smooth", block: "center" })
+            }
+          })
+          .catch(console.error)
+      }
       return
     }
 
@@ -416,7 +437,7 @@ export function SearchPanel() {
       setShowQuickVerses(false)
       return
     }
-  }, [quickInput, quickSuggestion, books])
+  }, [quickInput, quickSuggestion, books, applyNavigationSelection])
 
   const handleQuickVerseClick = useCallback((verse: Verse) => {
     useBibleStore.getState().setPendingNavigation({
@@ -481,7 +502,7 @@ export function SearchPanel() {
           <div className="flex flex-1 items-center gap-2 pr-3">
             <div className="relative flex-1">
               {quickSuggestion && quickSuggestion !== quickInput && (
-                <div className="absolute inset-0 flex items-center px-3 pointer-events-none z-10">
+                <div className="absolute inset-0 flex items-center border border-transparent px-2.5 pointer-events-none z-10">
                   <span className="text-xs font-normal">
                     <span className="text-foreground">{quickInput}</span>
                     <span className="text-muted-foreground">{quickSuggestion.slice(quickInput.length)}</span>
@@ -497,7 +518,7 @@ export function SearchPanel() {
                 onKeyDown={handleQuickKeyDown}
                 placeholder="Type: J → John 3:16"
                 className={cn(
-                  "h-7 text-xs relative bg-background",
+                  "h-7 text-xs md:text-xs relative bg-background",
                   quickSuggestion && quickSuggestion !== quickInput ? "text-transparent" : ""
                 )}
                 style={quickInputStyle}

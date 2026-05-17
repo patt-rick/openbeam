@@ -3,14 +3,9 @@
  * Pure functions for Bible reference autocomplete logic
  */
 
-export interface Book {
-  id: number
-  translation_id: number
-  book_number: number
-  name: string
-  abbreviation: string
-  testament: string
-}
+import type { Book } from "@/types"
+
+export type { Book }
 
 export interface AutocompleteResult {
   suggestion: string
