@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -40,6 +41,8 @@ import {
   HelpCircleIcon,
   GraduationCapIcon,
   BrainCircuitIcon,
+  EyeIcon,
+  EyeOffIcon,
 } from "lucide-react"
 import { useSettingsStore, useBibleStore } from "@/stores"
 import { useTutorialStore } from "@/stores/tutorial-store"
@@ -263,6 +266,8 @@ interface TranslationInfo {
 }
 
 function BibleSection() {
+  const hiddenTranslationIds = useSettingsStore((s) => s.hiddenTranslationIds)
+  const toggleHiddenTranslation = useSettingsStore((s) => s.toggleHiddenTranslation)
   const [translations, setTranslations] = useState<TranslationInfo[]>([])
   const [localIds, setLocalIds] = useState<Set<number>>(new Set())
   const [activeId, setActiveId] = useState<number>(1)
@@ -424,6 +429,36 @@ function BibleSection() {
           Detected verses will display in this translation.
           {translations.length > 0 && ` ${translations.length} translations available.`}
         </p>
+      </div>
+
+      <div className="flex flex-col gap-2 border-t pt-4">
+        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Show in main page dropdown</label>
+        <p className="text-[0.625rem] text-muted-foreground">
+          Hide translations you rarely use. The active translation always stays visible.
+        </p>
+        <ul className="flex flex-col gap-1">
+          {translations.map((t) => {
+            const hidden = hiddenTranslationIds.includes(t.id)
+            const isActive = t.id === activeId
+            return (
+              <li key={t.id} className="flex items-center justify-between rounded border px-2 py-1 text-xs">
+                <span className={cn(hidden && !isActive && "text-muted-foreground line-through")}>
+                  {t.abbreviation} — {t.title}{" "}
+                  <span className="text-muted-foreground">({t.language})</span>
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={isActive}
+                  title={isActive ? "Active translation can't be hidden" : hidden ? "Show in dropdown" : "Hide from dropdown"}
+                  onClick={() => toggleHiddenTranslation(t.id)}
+                >
+                  {hidden ? <EyeOffIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
       </div>
 
       <div className="flex flex-col gap-2 border-t pt-4">

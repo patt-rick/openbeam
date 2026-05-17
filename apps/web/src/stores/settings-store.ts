@@ -14,6 +14,7 @@ interface SettingsState {
   confidenceThreshold: number
   cooldownMs: number
   onboardingComplete: boolean
+  hiddenTranslationIds: number[]
 
   setDeepgramApiKey: (key: string | null) => void
   setActiveTranslationId: (id: number) => void
@@ -23,6 +24,7 @@ interface SettingsState {
   setConfidenceThreshold: (threshold: number) => void
   setCooldownMs: (ms: number) => void
   setOnboardingComplete: (complete: boolean) => void
+  toggleHiddenTranslation: (id: number) => void
 }
 
 type PersistedSettings = Omit<
@@ -36,6 +38,7 @@ type PersistedSettings = Omit<
   | "setConfidenceThreshold"
   | "setCooldownMs"
   | "setOnboardingComplete"
+  | "toggleHiddenTranslation"
 >
 
 function loadSettingsFromStorage(): Partial<PersistedSettings> & {
@@ -82,6 +85,7 @@ function persistSettings(state: SettingsState) {
       confidenceThreshold: state.confidenceThreshold,
       cooldownMs: state.cooldownMs,
       onboardingComplete: state.onboardingComplete,
+      hiddenTranslationIds: state.hiddenTranslationIds,
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   } catch {
@@ -141,6 +145,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   confidenceThreshold: persisted.confidenceThreshold ?? 0.8,
   cooldownMs: persisted.cooldownMs ?? 2500,
   onboardingComplete: persisted.onboardingComplete ?? false,
+  hiddenTranslationIds: Array.isArray(persisted.hiddenTranslationIds)
+    ? persisted.hiddenTranslationIds
+    : [],
 
   setDeepgramApiKey: (deepgramApiKey) => {
     set({ deepgramApiKey })
@@ -172,6 +179,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   setOnboardingComplete: (onboardingComplete) => {
     set({ onboardingComplete })
+    persistSettings(get())
+  },
+  toggleHiddenTranslation: (id) => {
+    const current = get().hiddenTranslationIds
+    const next = current.includes(id)
+      ? current.filter((x) => x !== id)
+      : [...current, id]
+    set({ hiddenTranslationIds: next })
     persistSettings(get())
   },
 }))

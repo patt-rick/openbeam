@@ -28,7 +28,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { bibleActions } from "@/hooks/use-bible"
-import { useBibleStore, useQueueStore } from "@/stores"
+import { useBibleStore, useQueueStore, useSettingsStore } from "@/stores"
 import type { Book, Verse } from "@/types"
 import { Input } from "@/components/ui/input"
 import { searchContextWithFuse, prefetchFuseIndex } from "@/lib/context-search"
@@ -149,6 +149,15 @@ export function SearchPanel() {
   const semanticResults = useBibleStore((s) => s.semanticResults)
   const activeTranslationId = useBibleStore((s) => s.activeTranslationId)
   const selectedVerse = useBibleStore((s) => s.selectedVerse)
+  const hiddenTranslationIds = useSettingsStore((s) => s.hiddenTranslationIds)
+
+  const visibleTranslations = useMemo(
+    () =>
+      translations.filter(
+        (t) => t.id === activeTranslationId || !hiddenTranslationIds.includes(t.id),
+      ),
+    [translations, hiddenTranslationIds, activeTranslationId],
+  )
 
   const quickSuggestion = useMemo(
     () => getAutocompleteSuggestion(quickInput, books).suggestion,
@@ -554,7 +563,7 @@ export function SearchPanel() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {translations.map((t) => (
+                {visibleTranslations.map((t) => (
                   <SelectItem key={t.id} value={String(t.id)}>
                     {t.abbreviation}
                   </SelectItem>

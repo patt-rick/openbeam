@@ -16,32 +16,38 @@ export const CanvasVerse = memo(function CanvasVerse({
 }: CanvasVerseProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [containerWidth, setContainerWidth] = useState(0)
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 })
 
-  // Measure container width with ResizeObserver
+  // Measure container width AND height so we can contain-fit within both.
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
     const observer = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width ?? 0
-      if (w > 0) setContainerWidth(w)
+      const rect = entries[0]?.contentRect
+      if (!rect) return
+      setContainerSize({ width: rect.width, height: rect.height })
     })
     observer.observe(container)
     return () => observer.disconnect()
   }, [])
 
-  // Render to canvas at display size
+  // Render to canvas at display size — contain-fit: pick the larger axis that
+  // still keeps the canvas inside the container, preserving aspect ratio.
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || containerWidth === 0) return
+    if (!canvas || containerSize.width === 0 || containerSize.height === 0) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
     const dpr = window.devicePixelRatio || 1
     const aspectRatio = theme.resolution.width / theme.resolution.height
-    const displayW = containerWidth
-    const displayH = displayW / aspectRatio
+    let displayW = containerSize.width
+    let displayH = displayW / aspectRatio
+    if (displayH > containerSize.height) {
+      displayH = containerSize.height
+      displayW = displayH * aspectRatio
+    }
 
     canvas.width = displayW * dpr
     canvas.height = displayH * dpr
@@ -51,11 +57,11 @@ export const CanvasVerse = memo(function CanvasVerse({
     ctx.scale(dpr, dpr)
     const scale = displayW / theme.resolution.width
     renderVerse(ctx, theme, verse, { scale })
-  }, [theme, verse, containerWidth])
+  }, [theme, verse, containerSize])
 
   return (
-    <div ref={containerRef} className={cn("w-full", className)}>
-      <canvas ref={canvasRef} className="w-full rounded-md" />
+    <div ref={containerRef} className={cn("flex h-full w-full items-center justify-center", className)}>
+      <canvas ref={canvasRef} className="rounded-md" />
     </div>
   )
 })
