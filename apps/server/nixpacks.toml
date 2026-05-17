@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["gcc", "pkg-config", "openssl", "sqlite"]
-
-[phases.build]
-cmds = ["cargo build --release"]
-
-[start]
-cmd = "./target/release/openbeam-server"
