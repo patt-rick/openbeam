@@ -8,23 +8,30 @@ use axum::{
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{broadcast, watch, RwLock};
+use tokio::sync::{broadcast, Mutex, RwLock};
+
+const DEFAULT_LABEL: &str = "broadcast";
 
 pub struct BroadcastRelay {
     pub tx: broadcast::Sender<String>,
-    pub state_tx: watch::Sender<Option<String>>,
-    pub state_rx: watch::Receiver<Option<String>>,
+    pub state: Mutex<HashMap<String, String>>,
 }
 
 impl BroadcastRelay {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(64);
-        let (state_tx, state_rx) = watch::channel(None);
         Self {
             tx,
-            state_tx,
-            state_rx,
+            state: Mutex::new(HashMap::new()),
         }
+    }
+
+    async fn cache(&self, label: String, raw: String) {
+        self.state.lock().await.insert(label, raw);
+    }
+
+    async fn snapshot(&self) -> Vec<String> {
+        self.state.lock().await.values().cloned().collect()
     }
 }
 
@@ -132,8 +139,13 @@ async fn handle_dashboard(mut socket: WebSocket, relay: Arc<BroadcastRelay>) {
 
         let msg_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if msg_type == "verse:update" {
+            let label = parsed
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or(DEFAULT_LABEL)
+                .to_string();
             let raw = text.to_string();
-            let _ = relay.state_tx.send(Some(raw.clone()));
+            relay.cache(label, raw.clone()).await;
             let _ = relay.tx.send(raw);
         }
     }
@@ -144,10 +156,11 @@ async fn handle_dashboard(mut socket: WebSocket, relay: Arc<BroadcastRelay>) {
 async fn handle_overlay_client(mut socket: WebSocket, relay: Arc<BroadcastRelay>) {
     tracing::info!("overlay: client connected");
 
-    // Send cached state on connect
-    let cached = relay.state_rx.borrow().clone();
-    if let Some(msg) = cached {
-        let _ = socket.send(Message::Text(msg.into())).await;
+    // Send cached state for every label so each overlay can pick the one matching its filter.
+    for msg in relay.snapshot().await {
+        if socket.send(Message::Text(msg.into())).await.is_err() {
+            return;
+        }
     }
 
     let mut rx = relay.tx.subscribe();
@@ -160,12 +173,14 @@ async fn handle_overlay_client(mut socket: WebSocket, relay: Arc<BroadcastRelay>
                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
                             let msg_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
                             if msg_type == "overlay:ready" {
-                                let cached = relay.state_rx.borrow().clone();
-                                if let Some(msg) = cached {
+                                let mut failed = false;
+                                for msg in relay.snapshot().await {
                                     if socket.send(Message::Text(msg.into())).await.is_err() {
+                                        failed = true;
                                         break;
                                     }
                                 }
+                                if failed { break; }
                             }
                         }
                     }

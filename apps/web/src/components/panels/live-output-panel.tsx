@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useMemo } from "react"
 import { PanelHeader } from "@/components/ui/panel-header"
 import { CanvasVerse } from "@/components/ui/canvas-verse"
 import { cn } from "@/lib/utils"
@@ -22,10 +22,6 @@ export function LiveOutputPanel() {
     () => deriveLiveVerse({ isLive, selectedVerse, translation }),
     [isLive, selectedVerse, translation]
   )
-
-  useEffect(() => {
-    useBroadcastStore.getState().setLiveVerse(verseData)
-  }, [verseData])
 
   return (
     <div

@@ -192,17 +192,16 @@ export const useBroadcastStore = create<BroadcastState>((set, get) => ({
   },
   syncBroadcastOutputFor: (outputId: string) => {
     const s = get()
-    const enabled = outputId === "alt" ? s.altEnabled : s.mainEnabled
-    if (!enabled) return
+    const outputEnabled = outputId === "alt" ? s.altEnabled : s.mainEnabled
     const themeId = outputId === "alt" ? s.altActiveThemeId : s.activeThemeId
     const label = outputId === "alt" ? "broadcast-alt" : "broadcast"
     const theme = s.themes.find((t) => t.id === themeId) ?? s.themes[0]
-    if (!theme) return
+    const effective = outputEnabled && s.isLive
 
     emitTo(label, {
-      theme,
-      verse: s.liveVerse,
-      enabled: true,
+      theme: effective ? theme : null,
+      verse: effective ? s.liveVerse : null,
+      enabled: effective,
     })
   },
   syncBroadcastOutput: () => {
@@ -240,11 +239,7 @@ export const useBroadcastStore = create<BroadcastState>((set, get) => ({
       mainEnabled,
       altEnabled: s.altEnabled,
     })
-    if (mainEnabled) {
-      get().syncBroadcastOutputFor("main")
-    } else {
-      emitTo("broadcast", { theme: null, verse: null, enabled: false })
-    }
+    get().syncBroadcastOutputFor("main")
   },
   setAltEnabled: (altEnabled) => {
     set({ altEnabled })
@@ -255,13 +250,12 @@ export const useBroadcastStore = create<BroadcastState>((set, get) => ({
       mainEnabled: s.mainEnabled,
       altEnabled,
     })
-    if (altEnabled) {
-      get().syncBroadcastOutputFor("alt")
-    } else {
-      emitTo("broadcast-alt", { theme: null, verse: null, enabled: false })
-    }
+    get().syncBroadcastOutputFor("alt")
   },
-  setLive: (isLive) => set({ isLive }),
+  setLive: (isLive) => {
+    set({ isLive })
+    get().syncBroadcastOutput()
+  },
   setLiveVerse: (liveVerse) => {
     set({ liveVerse })
     get().syncBroadcastOutput()

@@ -1,4 +1,6 @@
+import { useEffect, useMemo } from "react"
 import { useBroadcastStore } from "@/stores/broadcast-store"
+import { useBibleStore } from "@/stores/bible-store"
 import type { VerseRenderData } from "@/types"
 import type { Verse } from "@/types"
 
@@ -20,6 +22,29 @@ export function deriveLiveVerse({
 }): VerseRenderData | null {
   if (!isLive || !selectedVerse) return null
   return toVerseRenderData(selectedVerse, translation)
+}
+
+/**
+ * Drive `liveVerse` from selectedVerse + isLive + active translation.
+ * Mount once at the app root so panel visibility never breaks broadcast.
+ */
+export function useDriveLiveVerse() {
+  const isLive = useBroadcastStore((s) => s.isLive)
+  const selectedVerse = useBibleStore((s) => s.selectedVerse)
+  const translations = useBibleStore((s) => s.translations)
+  const activeTranslationId = useBibleStore((s) => s.activeTranslationId)
+
+  const translation =
+    translations.find((t) => t.id === activeTranslationId)?.abbreviation ?? "KJV"
+
+  const verseData = useMemo(
+    () => deriveLiveVerse({ isLive, selectedVerse, translation }),
+    [isLive, selectedVerse, translation],
+  )
+
+  useEffect(() => {
+    useBroadcastStore.getState().setLiveVerse(verseData)
+  }, [verseData])
 }
 
 export const broadcastActions = {
